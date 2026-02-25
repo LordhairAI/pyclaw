@@ -222,7 +222,7 @@ def load_extension_tools() -> ExtensionLoadResult:
         if extension_name.lower() in excluded_extension_names:
             logger.info("Skip excluded extension folder '%s'", extension_name)
             continue
-        module_name = f"openxbot_extension_{extension_name}"
+        module_name = f"pyclaw_extension_{extension_name}"
 
         try:
             module = _load_module(module_name, module_path)

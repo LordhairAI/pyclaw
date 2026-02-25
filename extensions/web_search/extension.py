@@ -33,36 +33,36 @@ FRESHNESS_RANGE = re.compile(r"^(\d{4}-\d{2}-\d{2})to(\d{4}-\d{2}-\d{2})$")
 
 
 _CACHE: dict[str, dict[str, Any]] = {}
-_OPENXBOT_CONFIG_CACHE: dict[str, Any] | None = None
+_pyclaw_CONFIG_CACHE: dict[str, Any] | None = None
 
 
-def _load_openxbot_config() -> dict[str, Any]:
-    global _OPENXBOT_CONFIG_CACHE
-    if _OPENXBOT_CONFIG_CACHE is not None:
-        return _OPENXBOT_CONFIG_CACHE
+def _load_pyclaw_config() -> dict[str, Any]:
+    global _pyclaw_CONFIG_CACHE
+    if _pyclaw_CONFIG_CACHE is not None:
+        return _pyclaw_CONFIG_CACHE
 
     raw_config_path = _normalize_str(os.getenv("CONFIG_PATH"))
     if not raw_config_path:
-        _OPENXBOT_CONFIG_CACHE = {}
-        return _OPENXBOT_CONFIG_CACHE
+        _pyclaw_CONFIG_CACHE = {}
+        return _pyclaw_CONFIG_CACHE
 
     config_path = Path(raw_config_path).expanduser()
     if not config_path.is_absolute():
         config_path = (Path.cwd() / config_path).resolve()
 
     if not config_path.exists() or not config_path.is_file():
-        _OPENXBOT_CONFIG_CACHE = {}
-        return _OPENXBOT_CONFIG_CACHE
+        _pyclaw_CONFIG_CACHE = {}
+        return _pyclaw_CONFIG_CACHE
 
     try:
         with config_path.open("r", encoding="utf-8") as fp:
             data = json.load(fp)
     except (OSError, json.JSONDecodeError):
-        _OPENXBOT_CONFIG_CACHE = {}
-        return _OPENXBOT_CONFIG_CACHE
+        _pyclaw_CONFIG_CACHE = {}
+        return _pyclaw_CONFIG_CACHE
 
-    _OPENXBOT_CONFIG_CACHE = data if isinstance(data, dict) else {}
-    return _OPENXBOT_CONFIG_CACHE
+    _pyclaw_CONFIG_CACHE = data if isinstance(data, dict) else {}
+    return _pyclaw_CONFIG_CACHE
 
 
 def _get_tool_config_value(tool_name: str, key_name: str) -> str:
@@ -71,7 +71,7 @@ def _get_tool_config_value(tool_name: str, key_name: str) -> str:
     if not normalized_tool or not normalized_key:
         return ""
 
-    config = _load_openxbot_config()
+    config = _load_pyclaw_config()
     tool_config = config.get(normalized_tool)
     if not isinstance(tool_config, dict):
         return ""
@@ -335,8 +335,8 @@ def _run_perplexity_search(query: str, freshness: str | None, timeout_seconds: i
         endpoint,
         headers={
             "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://openxbot.local",
-            "X-Title": "OpenXBot Web Search",
+            "HTTP-Referer": "https://pyclaw.local",
+            "X-Title": "pyclaw Web Search",
         },
         payload=body,
         timeout_seconds=timeout_seconds,

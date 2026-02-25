@@ -1,1 +1,1 @@
-"""CLI entrypoints for OpenXBot."""
+"""CLI entrypoints for pyclaw."""

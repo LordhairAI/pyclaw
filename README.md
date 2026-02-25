@@ -1,4 +1,4 @@
-# OpenXBot
+# PyClaw
 
 基于 FastAPI + LangGraph 的可扩展智能体服务。支持：
 
@@ -47,7 +47,7 @@
 ├── setup/                          # PostgreSQL 初始化脚本
 ├── workspace/                      # 启动时注入的上下文 Markdown
 ├── run.sh                          # 本地启动脚本
-└── openxbot.json                   # 可选工具配置（例如 web_search）
+└── pyclaw.json                   # 可选工具配置（例如 web_search）
 ```
 
 ## 环境要求
@@ -81,12 +81,12 @@ WORKSPACE_ROOT=./
 # PostgreSQL
 PG_CONFIG_HOST=127.0.0.1
 PG_CONFIG_PORT=5432
-PG_CONFIG_DATABASE=openxbot
+PG_CONFIG_DATABASE=pyclaw
 PG_CONFIG_USERNAME=postgres
 PG_CONFIG_PASSWORD=postgres
 
 # 可选：工具配置文件路径（web_search 会读取）
-CONFIG_PATH=./openxbot.json
+CONFIG_PATH=./pyclaw.json
 ```
 
 可选环境变量：
@@ -178,45 +178,45 @@ curl -X POST http://127.0.0.1:8000/api/v1/extensions/reload \
 推荐入口：
 
 ```bash
-uv run openxbot-cli --help
+uv run pyclaw-cli --help
 ```
 
 聊天：
 
 ```bash
-uv run openxbot-cli chat
-uv run openxbot-cli chat -m "你好"
-uv run openxbot-cli chat --session-id demo-session-001
+uv run pyclaw-cli chat
+uv run pyclaw-cli chat -m "你好"
+uv run pyclaw-cli chat --session-id demo-session-001
 ```
 
 cron：
 
 ```bash
-uv run openxbot-cli cron help
-uv run openxbot-cli cron list
-uv run openxbot-cli cron run <job-id>
-uv run openxbot-cli cron remove <job-id>
+uv run pyclaw-cli cron help
+uv run pyclaw-cli cron list
+uv run pyclaw-cli cron run <job-id>
+uv run pyclaw-cli cron remove <job-id>
 ```
 
 添加任务示例：
 
 ```bash
 # 单次任务（绝对时间）
-uv run openxbot-cli cron add \
+uv run pyclaw-cli cron add \
   --id once-demo \
   --name log \
   --at "2026-03-01 09:30:00" \
   --kwargs '{"message":"once job"}'
 
 # 单次任务（相对时长）
-uv run openxbot-cli cron add \
+uv run pyclaw-cli cron add \
   --id delay-demo \
   --name log \
   --at "1h 20m 5s" \
   --kwargs '{"message":"delay job"}'
 
 # 周期任务（cron）
-uv run openxbot-cli cron add \
+uv run pyclaw-cli cron add \
   --id cron-demo \
   --name log \
   --cron "0 7 * * *" \
@@ -229,7 +229,7 @@ uv run openxbot-cli cron add \
 uv run python -m app.cli.cli --help
 ```
 
-说明：`uv run python -m app.cli` 当前会触发 `ImportError`，请使用 `openxbot-cli` 或 `python -m app.cli.cli`。
+说明：`uv run python -m app.cli` 当前会触发 `ImportError`，请使用 `pyclaw-cli` 或 `python -m app.cli.cli`。
 
 ## Cron 任务格式
 
@@ -309,7 +309,7 @@ uv run python -m app.cli.cli --help
 1. `CONFIG_PATH` 指向 JSON 文件中的 `web_search.BRAVE_API_KEY`
 2. 环境变量 `BRAVE_API_KEY`
 
-`openxbot.json` 示例（仅示意）：
+`pyclaw.json` 示例（仅示意）：
 
 ```json
 {
@@ -330,7 +330,7 @@ uv run python -m app.cli.cli --help
 
 ## 注意事项
 
-- `.env` 与 `openxbot.json` 可能包含密钥，不要提交到公共仓库。
+- `.env` 与 `pyclaw.json` 可能包含密钥，不要提交到公共仓库。
 - `WORKSPACE_ROOT` 会影响以下路径：
   - `cron/jobs.json`
   - `workspace/*.md`

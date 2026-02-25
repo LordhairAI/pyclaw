@@ -8,7 +8,7 @@ from app.cli.cron import handle_cron_command, register_cron_parser
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="OpenXBot 命令行")
+    parser = argparse.ArgumentParser(description="pyclaw 命令行")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     chat_parser = subparsers.add_parser("chat", help="启动聊天会话")

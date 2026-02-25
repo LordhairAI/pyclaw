@@ -24,7 +24,7 @@ from langchain_postgres import PGVector
 
 DEFAULT_VECTOR_WEIGHT = 0.7
 DEFAULT_TEXT_WEIGHT = 0.3
-DEFAULT_DB_NAME = "openxbot"
+DEFAULT_DB_NAME = "pyclaw"
 DEFAULT_TEXT_TABLE = "text_search_collection"
 DEFAULT_VECTOR_COLLECTION = "text_search_collection"
 
@@ -198,13 +198,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--db-dsn",
         default=os.getenv("DB_DSN", f"dbname={DEFAULT_DB_NAME}"),
-        help="psycopg DSN for text search (default: dbname=openxbot).",
+        help="psycopg DSN for text search (default: dbname=pyclaw).",
     )
     parser.add_argument(
         "--langchain-connection",
         default=os.getenv(
             "LANGCHAIN_PG_CONNECTION",
-            "postgresql+psycopg://postgres:postgres@localhost:5432/openxbot",
+            "postgresql+psycopg://postgres:postgres@localhost:5432/pyclaw",
         ),
         help="SQLAlchemy-style DSN for langchain_postgres PGVector.",
     )

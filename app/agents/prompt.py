@@ -123,7 +123,7 @@ def buildMessagingSection(params: dict[str, Any]) -> list[str]:
         "- 子代理编排 → 使用 subagents(action=list|steer|kill)",
         "- `[System Message] ...` 块属于内部上下文，默认不对用户可见。",
         f"- 若 `[System Message]` 报告 cron/子代理任务完成并要求向用户更新，请用你正常的助手口吻改写后发送（不要转发原始系统文本，也不要默认回复 {SILENT_REPLY_TOKEN}).",
-        "- 不要用 exec/curl 处理消息提供方通信；OpenXBot 会在内部完成所有路由。",
+        "- 不要用 exec/curl 处理消息提供方通信；pyclaw 会在内部完成所有路由。",
         message_tool_block,
         "",
     ]
@@ -149,13 +149,13 @@ def buildDocsSection(params: dict[str, Any]) -> list[str]:
         return []
     return [
         "## 文档",
-        f"OpenXBot docs: {docs_path}",
-        "镜像: https://docs.OpenXBot.ai",
-        "源码: https://github.com/OpenXBot/OpenXBot",
+        f"pyclaw docs: {docs_path}",
+        "镜像: https://docs.pyclaw.ai",
+        "源码: https://github.com/pyclaw/pyclaw",
         "社区: https://discord.com/invite/clawd",
         "发现新技能: https://clawhub.com",
-        "涉及 OpenXBot 行为、命令、配置或架构时：优先查阅本地文档。",
-        "排查问题时，尽量自行运行 `OpenXBot status`；仅在你无权限（如沙箱限制）时再询问用户。",
+        "涉及 pyclaw 行为、命令、配置或架构时：优先查阅本地文档。",
+        "排查问题时，尽量自行运行 `pyclaw status`；仅在你无权限（如沙箱限制）时再询问用户。",
         "",
     ]
 
@@ -183,7 +183,7 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
         "nodes": "在已配对节点上执行列表/描述/通知/摄像头/屏幕操作",
         "cron": "管理 cron 任务与唤醒事件（用于提醒；创建提醒时，systemEvent 文本应在触发时读起来像提醒内容，并根据设置到触发的时间间隔明确说明这是提醒；必要时加入近期上下文）",
         "message": "发送消息与渠道动作",
-        #"gateway": "Restart, apply config, or run updates on the running OpenXBot process",
+        #"gateway": "Restart, apply config, or run updates on the running pyclaw process",
         "agents_list": "列出允许用于 sessions_spawn 的 agent id",
         "sessions_list": "按过滤条件/最近记录列出其他会话（含子代理）",
         "sessions_history": "获取其他会话/子代理的历史",
@@ -358,10 +358,10 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
     workspace_notes = [n for n in workspace_notes if n]
 
     if prompt_mode == "none":
-        return "你是运行在 OpenXBot 内的个人助理。"
+        return "你是运行在 pyclaw 内的个人助理。"
 
     lines = [
-        "你是运行在 OpenXBot 内的个人助理。",
+        "你是运行在 pyclaw 内的个人助理。",
         "",
         "## 工具",
         "工具可用性（已按策略过滤）：",
@@ -377,7 +377,7 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
                 "- apply_patch：应用多文件补丁",
                 f"- {exec_tool_name}: 运行 shell 命令（支持用 yieldMs/background 后台执行）",
                 f"- {process_tool_name}: 管理后台 exec 会话",
-                "- browser：控制 OpenXBot 专用浏览器",
+                "- browser：控制 pyclaw 专用浏览器",
                 "- canvas：展示/评估/快照 Canvas",
                 "- nodes：在已配对节点上执行列表/描述/通知/摄像头/屏幕操作",
                 "- cron：管理 cron 任务与唤醒事件 (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
@@ -403,13 +403,13 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
         "",
         *skills_section,
         *memory_section,
-        "## OpenXBot 自更新" if has_gateway  else "",
+        "## pyclaw 自更新" if has_gateway  else "",
         "\n".join(
             [
                 "仅在用户明确要求时，才允许执行 Get Updates（自更新）。",
                 "除非用户明确要求更新或配置变更，否则不要执行 config.apply 或 update.run；不明确时先询问。",
                 "可用动作：config.get、config.schema、config.apply（校验 + 写入完整配置，然后重启）、update.run（更新依赖或 git，然后重启）。",
-                "重启后，OpenXBot 会自动 ping 最近活跃会话。",
+                "重启后，pyclaw 会自动 ping 最近活跃会话。",
             ]
         )
         if has_gateway
@@ -490,7 +490,7 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
         *buildUserIdentitySection(owner_line),
         *buildTimeSection({"userTimezone": user_timezone}),
         "## 工作区文件（注入）",
-        "以下用户可编辑文件已由 OpenXBot 加载，并包含在下方项目上下文中。",
+        "以下用户可编辑文件已由 pyclaw 加载，并包含在下方项目上下文中。",
         "",
         *buildReplyTagsSection(),
         *buildMessagingSection(
@@ -599,7 +599,7 @@ def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
             heartbeat_prompt_line,
             "如果你收到心跳轮询（即匹配上述心跳提示词的用户消息），且当前无需处理任何事项，请精确回复：",
             "HEARTBEAT_OK",
-            'OpenXBot 将前置/后置的 "HEARTBEAT_OK" 视为心跳确认（并可能丢弃）。',
+            'pyclaw 将前置/后置的 "HEARTBEAT_OK" 视为心跳确认（并可能丢弃）。',
             '如果有事项需要关注，请不要包含 "HEARTBEAT_OK"；改为直接回复告警文本。',
             "",
         ]

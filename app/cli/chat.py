@@ -22,7 +22,7 @@ async def run_chat(
         return 0
 
     if not no_banner:
-        print("OpenXBot CLI 已启动，输入 exit/quit 结束会话。")
+        print("pyclaw CLI 已启动，输入 exit/quit 结束会话。")
         if session_id:
             print(f"当前 session_id: {session_id}")
 

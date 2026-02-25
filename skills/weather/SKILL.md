@@ -2,7 +2,7 @@
 name: weather
 description: "通过 wttr.in 或 Open-Meteo 获取当前天气与预报。适用场景：用户询问任意地点的天气、气温或天气预报。不适用场景：历史天气数据、恶劣天气预警或深入气象分析。无需 API Key。"
 homepage: https://wttr.in/:help
-metadata: { "openxbot": { "emoji": "🌤️", "requires": { "bins": ["fetch_url"] } } }
+metadata: { "pyclaw": { "emoji": "🌤️", "requires": { "bins": ["fetch_url"] } } }
 ---
 
 # 天气技能

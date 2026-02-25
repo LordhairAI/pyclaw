@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyclaw"
+version = "0.1.0"
+description = "Your own personal AI assistant. Based on Langchain + Langgraph + Postgresql, a replica of the openclaw learning project was created."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "dotenv>=0.9.9",
+    "fastapi>=0.129.0",
+    "langchain>=1.2.10",
+    "langchain-openai>=0.3.0",
+    "langchain-postgres>=0.0.17",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "psycopg2-binary>=2.9.11",
+    "uvicorn>=0.41.0",
+    "watchdog>=6.0.0",
+]
+
+[project.scripts]
+pyclaw-cli = "app.cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

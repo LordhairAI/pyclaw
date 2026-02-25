@@ -1,0 +1,665 @@
+
+from typing import Any, Literal, Dict
+import unicodedata
+import re
+
+SILENT_REPLY_TOKEN = "NO_REPLY"
+
+def escape_regexp(text: str) -> str:
+    return re.escape(text)
+
+def is_silent_reply_text(text: str | None, token: str = SILENT_REPLY_TOKEN) -> bool:
+    if not text:
+        return False
+    escaped = escape_regexp(token)
+    prefix = re.compile(rf'^\s*{escaped}(?=$|\W)')
+    if prefix.search(text):
+        return True
+    suffix = re.compile(rf'\b{escaped}\b\W*$')
+    return suffix.search(text) is not None
+
+def listDeliverableMessageChannels() -> list[str]:
+    return list([
+        "telegram",
+        "whatsapp",
+        "discord",
+        "irc",
+        "googlechat",
+        "slack",
+        "signal",
+        "imessage",
+    ])
+
+def sanitizeForPromptLiteral(value: str) -> str:
+    return "".join(
+        ch
+        for ch in value
+        if unicodedata.category(ch) not in {"Cc", "Cf", "Zl", "Zp"}
+    )
+    
+def buildSkillsSection(params : dict):
+    trimmed = (params.get("skillsPrompt") or "").strip()
+    if not trimmed:
+        return []
+    read_tool_name = params["readToolName"]
+    return [
+        "## Skills (mandatory)",
+        "Before replying: scan <available_skills> <description> entries.",
+        f"- If exactly one skill clearly applies: read its SKILL.md at <location> with `${read_tool_name}`, then follow it.",
+        "- If multiple could apply: choose the most specific one, then read/follow it.",
+        "- If none clearly apply: do not read any SKILL.md.",
+        "Constraints: never read more than one skill up front; only read after selecting.",
+        trimmed,
+        "",
+    ]
+    
+def buildMemorySection(params : dict):
+    lines = [
+        "## Memory Recall",
+        "Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md; then use memory_get to pull only the needed lines. If low confidence after search, say you checked.",
+    ]
+    if params.get("citationsMode") == "off":
+        lines.append(
+            "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks."
+        )
+    else:
+        lines.append(
+            "Citations: include Source: <path#line> when it helps the user verify memory snippets."
+        )
+        
+    lines.append("")
+    return lines
+
+def buildUserIdentitySection(ownerLine: str | None) -> list[str]:
+    if not ownerLine:
+        return []
+    return ["## User Identity", ownerLine, ""]
+
+def buildTimeSection(params : dict[str, Any]):
+    return ["## Current Date & Time", f"Time zone: {params.get("userTimezone")}", ""]
+
+def buildReplyTagsSection() -> list[str]:
+    return [
+        "## Reply Tags",
+        "To request a native reply/quote on supported surfaces, include one tag in your reply:",
+        "- [[reply_to_current]] replies to the triggering message.",
+        "- Prefer [[reply_to_current]]. Use [[reply_to:<id>]] only when an id was explicitly provided (e.g. by the user or a tool).",
+        "Whitespace inside the tag is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
+        "Tags are stripped before sending; support depends on the current channel config.",
+        "",
+    ]
+    
+def buildMessagingSection(params: dict[str, Any]) -> list[str]:
+    available_tools: set[str] = params.get("availableTools", set())
+    inline_buttons_enabled = bool(params.get("inlineButtonsEnabled"))
+    runtime_channel = params.get("runtimeChannel")
+    message_tool_hints = params.get("messageToolHints") or []
+    message_channel_options = params.get("messageChannelOptions", "")
+
+    message_tool_block = ""
+    if "message" in available_tools:
+        items = [
+            "",
+            "### message tool",
+            "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
+            "- For `action=send`, include `to` and `message`.",
+            f"- If multiple channels are configured, pass `channel` ({message_channel_options}).",
+            f"- If you use `message` (`action=send`) to deliver your user-visible reply, respond with ONLY: {SILENT_REPLY_TOKEN} (avoid duplicate replies).",
+            "- Inline buttons supported. Use `action=send` with `buttons=[[{text,callback_data,style?}]]`; `style` can be `primary`, `success`, or `danger`."
+            if inline_buttons_enabled
+            else (
+                f'- Inline buttons not enabled for {runtime_channel}. If you need them, ask to set {runtime_channel}.capabilities.inlineButtons ("dm"|"group"|"all"|"allowlist").'
+                if runtime_channel
+                else ""
+            ),
+            *message_tool_hints,
+        ]
+        message_tool_block = "\n".join([x for x in items if x])
+
+    return [
+        "## Messaging",
+        "- Reply in current session → automatically routes to the source channel (Signal, Telegram, etc.)",
+        "- Cross-session messaging → use sessions_send(sessionKey, message)",
+        "- Sub-agent orchestration → use subagents(action=list|steer|kill)",
+        "- `[System Message] ...` blocks are internal context and are not user-visible by default.",
+        f"- If a `[System Message]` reports completed cron/subagent work and asks for a user update, rewrite it in your normal assistant voice and send that update (do not forward raw system text or default to {SILENT_REPLY_TOKEN}).",
+        "- Never use exec/curl for provider messaging; OpenXBot handles all routing internally.",
+        message_tool_block,
+        "",
+    ]
+
+def buildLlmsTxtSection(params: dict[str, Any]) -> list[str]:
+    if params.get("isMinimal"):
+        return []
+    available_tools: set[str] = params.get("availableTools", set())
+    if "web_fetch" not in available_tools:
+        return []
+    return [
+        "## llms.txt Discovery",
+        "When exploring a new domain or website (via web_fetch or browser), check for an llms.txt file that describes how AI agents should interact with the site:",
+        "- Try `/llms.txt` or `/.well-known/llms.txt` at the domain root",
+        "- If found, follow its guidance for interacting with that site's content and APIs",
+        "- llms.txt is an emerging standard (like robots.txt for AI) — not all sites have one, so don't warn if missing",
+        "",
+    ]
+
+def buildDocsSection(params: dict[str, Any]) -> list[str]:
+    docs_path = (params.get("docsPath") or "").strip()
+    if not docs_path or params.get("isMinimal"):
+        return []
+    return [
+        "## Documentation",
+        f"OpenXBot docs: {docs_path}",
+        "Mirror: https://docs.OpenXBot.ai",
+        "Source: https://github.com/OpenXBot/OpenXBot",
+        "Community: https://discord.com/invite/clawd",
+        "Find new skills: https://clawhub.com",
+        "For OpenXBot behavior, commands, config, or architecture: consult local docs first.",
+        "When diagnosing issues, run `OpenXBot status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
+        "",
+    ]
+
+def buildVoiceSection(params: dict[str, Any]) -> list[str]:
+    hint = (params.get("ttsHint") or "").strip()
+    if not hint:
+        return []
+    return ["## Voice (TTS)", hint, ""]
+
+def buildAgentSystemPrompt(params: dict[str, Any]) -> str:
+    core_tool_summaries: dict[str, str] = {
+        "read": "Read file contents",
+        "write": "Create or overwrite files",
+        "edit": "Make precise edits to files",
+        "apply_patch": "Apply multi-file patches",
+        "grep": "Search file contents for patterns",
+        "find": "Find files by glob pattern",
+        "ls": "List directory contents",
+        "exec": "Run shell commands (pty available for TTY-required CLIs)",
+        "process": "Manage background exec sessions",
+        "web_search": "Search the web (Brave API)",
+        "web_fetch": "Fetch and extract readable content from a URL",
+        "browser": "Control web browser",
+        "canvas": "Present/eval/snapshot the Canvas",
+        "nodes": "List/describe/notify/camera/screen on paired nodes",
+        "cron": "Manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+        "message": "Send messages and channel actions",
+        #"gateway": "Restart, apply config, or run updates on the running OpenXBot process",
+        "agents_list": "List agent ids allowed for sessions_spawn",
+        "sessions_list": "List other sessions (incl. sub-agents) with filters/last",
+        "sessions_history": "Fetch history for another session/sub-agent",
+        "sessions_send": "Send a message to another session/sub-agent",
+        "sessions_spawn": "Spawn a sub-agent session",
+        "subagents": "List, steer, or kill sub-agent runs for this requester session",
+        "session_status": "Show a /status-equivalent status card (usage + time + Reasoning/Verbose/Elevated); use for model-use questions (📊 session_status); optional per-session model override",
+        "image": "Analyze an image with the configured image model",
+    }
+    tool_order = [
+        "read",
+        "write",
+        "edit",
+        "apply_patch",
+        "grep",
+        "find",
+        "ls",
+        "exec",
+        "process",
+        "web_search",
+        "web_fetch",
+        "browser",
+        "canvas",
+        "nodes",
+        "cron",
+        "message",
+        "gateway",
+        "agents_list",
+        "sessions_list",
+        "sessions_history",
+        "sessions_send",
+        "subagents",
+        "session_status",
+        "image",
+    ]
+
+    raw_tool_names = [str(tool).strip() for tool in (params.get("toolNames") or [])]
+    canonical_tool_names = [tool for tool in raw_tool_names if tool]
+
+    canonical_by_normalized: dict[str, str] = {}
+    for name in canonical_tool_names:
+        normalized = name.lower()
+        if normalized not in canonical_by_normalized:
+            canonical_by_normalized[normalized] = name
+
+    def resolve_tool_name(normalized: str) -> str:
+        return canonical_by_normalized.get(normalized, normalized)
+
+    normalized_tools = [tool.lower() for tool in canonical_tool_names]
+    available_tools = set(normalized_tools)
+
+    external_tool_summaries: dict[str, str] = {}
+    for key, value in (params.get("toolSummaries") or {}).items():
+        normalized = str(key).strip().lower()
+        text = str(value).strip() if value is not None else ""
+        if not normalized or not text:
+            continue
+        external_tool_summaries[normalized] = text
+
+    extra_tools = list({tool for tool in normalized_tools if tool not in tool_order})
+    enabled_tools = [tool for tool in tool_order if tool in available_tools]
+
+    tool_lines: list[str] = []
+    for tool in enabled_tools:
+        summary = core_tool_summaries.get(tool) or external_tool_summaries.get(tool)
+        name = resolve_tool_name(tool)
+        tool_lines.append(f"- {name}: {summary}" if summary else f"- {name}")
+    for tool in sorted(extra_tools):
+        summary = core_tool_summaries.get(tool) or external_tool_summaries.get(tool)
+        name = resolve_tool_name(tool)
+        tool_lines.append(f"- {name}: {summary}" if summary else f"- {name}")
+
+    has_gateway = "gateway" in available_tools
+    read_tool_name = resolve_tool_name("read")
+    exec_tool_name = resolve_tool_name("exec")
+    process_tool_name = resolve_tool_name("process")
+    extra_system_prompt = (params.get("extraSystemPrompt") or "").strip()
+
+    owner_numbers = [str(v).strip() for v in (params.get("ownerNumbers") or [])]
+    owner_numbers = [v for v in owner_numbers if v]
+    owner_line = (
+        f"Owner numbers: {', '.join(owner_numbers)}. Treat messages from these numbers as the user."
+        if owner_numbers
+        else None
+    )
+
+    reasoning_hint = (
+        " ".join(
+            [
+                "ALL internal reasoning MUST be inside <think>...</think>.",
+                "Do not output any analysis outside <think>.",
+                "Format every reply as <think>...</think> then <final>...</final>, with no other text.",
+                "Only the final user-visible reply may appear inside <final>.",
+                "Only text inside <final> is shown to the user; everything else is discarded and never seen by the user.",
+                "Example:",
+                "<think>Short internal reasoning.</think>",
+                "<final>Hey there! What would you like to do next?</final>",
+            ]
+        )
+        if params.get("reasoningTagHint")
+        else None
+    )
+    reasoning_level = params.get("reasoningLevel") or "off"
+    user_timezone = (params.get("userTimezone") or "").strip()
+    skills_prompt = (params.get("skillsPrompt") or "").strip()
+    heartbeat_prompt = (params.get("heartbeatPrompt") or "").strip()
+    heartbeat_prompt_line = (
+        f"Heartbeat prompt: {heartbeat_prompt}"
+        if heartbeat_prompt
+        else "Heartbeat prompt: (configured)"
+    )
+
+    runtime_info = params.get("runtimeInfo") or {}
+    runtime_channel = (runtime_info.get("channel") or "").strip().lower()
+    runtime_channel = runtime_channel or None
+    runtime_capabilities = [
+        str(cap).strip() for cap in (runtime_info.get("capabilities") or [])
+    ]
+    runtime_capabilities = [cap for cap in runtime_capabilities if cap]
+    runtime_capabilities_lower = {cap.lower() for cap in runtime_capabilities}
+    inline_buttons_enabled = "inlinebuttons" in runtime_capabilities_lower
+    message_channel_options = "|".join(listDeliverableMessageChannels())
+
+    prompt_mode = params.get("promptMode") or "full"
+    #is_minimal = prompt_mode in {"minimal", "none"}
+
+    sandbox_info = params.get("sandboxInfo") or {}
+    sandbox_container_workspace = (sandbox_info.get("containerWorkspaceDir") or "").strip()
+    sanitized_workspace_dir = sanitizeForPromptLiteral(params["workspaceDir"])
+    sanitized_sandbox_container_workspace = (
+        sanitizeForPromptLiteral(sandbox_container_workspace)
+        if sandbox_container_workspace
+        else ""
+    )
+    display_workspace_dir = (
+        sanitized_sandbox_container_workspace
+        if sandbox_info.get("enabled") and sanitized_sandbox_container_workspace
+        else sanitized_workspace_dir
+    )
+    workspace_guidance = (
+        f"For read/write/edit/apply_patch, file paths resolve against host workspace: {sanitized_workspace_dir}. For bash/exec commands, use sandbox container paths under {sanitized_sandbox_container_workspace} (or relative paths from that workdir), not host paths. Prefer relative paths so both sandboxed exec and file tools work consistently."
+        if sandbox_info.get("enabled") and sanitized_sandbox_container_workspace
+        else "Treat this directory as the single global workspace for file operations unless explicitly instructed otherwise."
+    )
+
+    safety_section = [
+        "## Safety",
+        "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
+        "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
+        "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
+        "",
+    ]
+    skills_section = buildSkillsSection(
+        {
+            "skillsPrompt": skills_prompt,
+            "readToolName": read_tool_name,
+        }
+    )
+    memory_section = buildMemorySection(
+        {
+            "availableTools": available_tools,
+            "citationsMode": params.get("memoryCitationsMode"),
+        }
+    )
+    docs_section = buildDocsSection(
+        {
+            "docsPath": params.get("docsPath"),
+            "readToolName": read_tool_name,
+        }
+    )
+    workspace_notes = [str(n).strip() for n in (params.get("workspaceNotes") or [])]
+    workspace_notes = [n for n in workspace_notes if n]
+
+    if prompt_mode == "none":
+        return "You are a personal assistant running inside OpenXBot."
+
+    lines = [
+        "You are a personal assistant running inside OpenXBot.",
+        "",
+        "## Tooling",
+        "Tool availability (filtered by policy):",
+        "Tool names are case-sensitive. Call tools exactly as listed.",
+        "\n".join(tool_lines)
+        if tool_lines
+        else "\n".join(
+            [
+                "Pi lists the standard tools above. This runtime enables:",
+                "- grep: search file contents for patterns",
+                "- find: find files by glob pattern",
+                "- ls: list directory contents",
+                "- apply_patch: apply multi-file patches",
+                f"- {exec_tool_name}: run shell commands (supports background via yieldMs/background)",
+                f"- {process_tool_name}: manage background exec sessions",
+                "- browser: control OpenXBot's dedicated browser",
+                "- canvas: present/eval/snapshot the Canvas",
+                "- nodes: list/describe/notify/camera/screen on paired nodes",
+                "- cron: manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+                "- sessions_list: list sessions",
+                "- sessions_history: fetch session history",
+                "- sessions_send: send to another session",
+                "- subagents: list/steer/kill sub-agent runs",
+                '- session_status: show usage/time/model state and answer "what model are we using?"',
+            ]
+        ),
+        "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
+        f"For long waits, avoid rapid poll loops: use {exec_tool_name} with enough yieldMs or {process_tool_name}(action=poll, timeout=<ms>).",
+        "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
+        "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
+        "",
+        "## Tool Call Style",
+        "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+        "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+        "Keep narration brief and value-dense; avoid repeating obvious steps.",
+        "Use plain human language for narration unless in a technical context.",
+        "",
+        *safety_section,
+        "## OpenXBot CLI Quick Reference",
+        "OpenXBot is controlled via subcommands. Do not invent commands.",
+        "To manage the Gateway daemon service (start/stop/restart):",
+        "- OpenXBot gateway status",
+        "- OpenXBot gateway start",
+        "- OpenXBot gateway stop",
+        "- OpenXBot gateway restart",
+        "If unsure, ask the user to run `OpenXBot help` (or `OpenXBot gateway --help`) and paste the output.",
+        "",
+        *skills_section,
+        *memory_section,
+        "## OpenXBot Self-Update" if has_gateway  else "",
+        "\n".join(
+            [
+                "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
+                "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
+                "Actions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
+                "After restart, OpenXBot pings the last active session automatically.",
+            ]
+        )
+        if has_gateway
+        else "",
+        "" if has_gateway else "",
+        "",
+        "## Model Aliases"
+        if (params.get("modelAliasLines") or [])
+        else "",
+        "Prefer aliases when specifying model overrides; full provider/model is also accepted."
+        if (params.get("modelAliasLines") or [])
+        else "",
+        "\n".join(params.get("modelAliasLines") or [])
+        if (params.get("modelAliasLines") or [])
+        else "",
+        "" if (params.get("modelAliasLines") or []) else "",
+        "If you need the current date, time, or day of week, run session_status (📊 session_status)."
+        if user_timezone
+        else "",
+        "## Workspace",
+        f"Your working directory is: {display_workspace_dir}",
+        workspace_guidance,
+        *workspace_notes,
+        "",
+        *docs_section,
+        "## Sandbox" if sandbox_info.get("enabled") else "",
+        (
+            "\n".join(
+                [
+                    "You are running in a sandboxed runtime (tools execute in Docker).",
+                    "Some tools may be unavailable due to sandbox policy.",
+                    "Sub-agents stay sandboxed (no elevated/host access). Need outside-sandbox read/write? Don't spawn; ask first.",
+                    f"Sandbox container workdir: {sanitizeForPromptLiteral(sandbox_info.get('containerWorkspaceDir'))}"
+                    if sandbox_info.get("containerWorkspaceDir")
+                    else "",
+                    f"Sandbox host mount source (file tools bridge only; not valid inside sandbox exec): {sanitizeForPromptLiteral(sandbox_info.get('workspaceDir'))}"
+                    if sandbox_info.get("workspaceDir")
+                    else "",
+                    (
+                        f"Agent workspace access: {sandbox_info.get('workspaceAccess')}"
+                        + (
+                            f" (mounted at {sanitizeForPromptLiteral(sandbox_info.get('agentWorkspaceMount'))})"
+                            if sandbox_info.get("agentWorkspaceMount")
+                            else ""
+                        )
+                    )
+                    if sandbox_info.get("workspaceAccess")
+                    else "",
+                    "Sandbox browser: enabled." if sandbox_info.get("browserBridgeUrl") else "",
+                    f"Sandbox browser observer (noVNC): {sanitizeForPromptLiteral(sandbox_info.get('browserNoVncUrl'))}"
+                    if sandbox_info.get("browserNoVncUrl")
+                    else "",
+                    "Host browser control: allowed."
+                    if sandbox_info.get("hostBrowserAllowed") is True
+                    else (
+                        "Host browser control: blocked."
+                        if sandbox_info.get("hostBrowserAllowed") is False
+                        else ""
+                    ),
+                    "Elevated exec is available for this session."
+                    if (sandbox_info.get("elevated") or {}).get("allowed")
+                    else "",
+                    "User can toggle with /elevated on|off|ask|full."
+                    if (sandbox_info.get("elevated") or {}).get("allowed")
+                    else "",
+                    "You may also send /elevated on|off|ask|full when needed."
+                    if (sandbox_info.get("elevated") or {}).get("allowed")
+                    else "",
+                    f"Current elevated level: {(sandbox_info.get('elevated') or {}).get('defaultLevel')} (ask runs exec on host with approvals; full auto-approves)."
+                    if (sandbox_info.get("elevated") or {}).get("allowed")
+                    else "",
+                ]
+            )
+            if sandbox_info.get("enabled")
+            else ""
+        ),
+        "" if sandbox_info.get("enabled") else "",
+        *buildUserIdentitySection(owner_line),
+        *buildTimeSection({"userTimezone": user_timezone}),
+        "## Workspace Files (injected)",
+        "These user-editable files are loaded by OpenXBot and included below in Project Context.",
+        "",
+        *buildReplyTagsSection(),
+        *buildMessagingSection(
+            {
+                "availableTools": available_tools,
+                "messageChannelOptions": message_channel_options,
+                "inlineButtonsEnabled": inline_buttons_enabled,
+                "runtimeChannel": runtime_channel,
+                "messageToolHints": params.get("messageToolHints"),
+            }
+        ),
+        *buildVoiceSection({"ttsHint": params.get("ttsHint")}),
+        *buildLlmsTxtSection({"availableTools": available_tools}),
+    ]
+
+    if extra_system_prompt:
+        context_header = (
+            "## Subagent Context" if prompt_mode == "minimal" else "## Group Chat Context"
+        )
+        lines.extend([context_header, extra_system_prompt, ""])
+
+    if params.get("reactionGuidance"):
+        reaction_guidance = params["reactionGuidance"]
+        level = reaction_guidance["level"]
+        channel = reaction_guidance["channel"]
+        guidance_text = (
+            "\n".join(
+                [
+                    f"Reactions are enabled for {channel} in MINIMAL mode.",
+                    "React ONLY when truly relevant:",
+                    "- Acknowledge important user requests or confirmations",
+                    "- Express genuine sentiment (humor, appreciation) sparingly",
+                    "- Avoid reacting to routine messages or your own replies",
+                    "Guideline: at most 1 reaction per 5-10 exchanges.",
+                ]
+            )
+            if level == "minimal"
+            else "\n".join(
+                [
+                    f"Reactions are enabled for {channel} in EXTENSIVE mode.",
+                    "Feel free to react liberally:",
+                    "- Acknowledge messages with appropriate emojis",
+                    "- Express sentiment and personality through reactions",
+                    "- React to interesting content, humor, or notable events",
+                    "- Use reactions to confirm understanding or agreement",
+                    "Guideline: react whenever it feels natural.",
+                ]
+            )
+        )
+        lines.extend(["## Reactions", guidance_text, ""])
+
+    if reasoning_hint:
+        lines.extend(["## Reasoning Format", reasoning_hint, ""])
+
+    context_files = params.get("contextFiles") or []
+    valid_context_files = [
+        file
+        for file in context_files
+        if isinstance(file.get("path"), str) and file.get("path", "").strip()
+    ]
+    if valid_context_files:
+        has_soul_file = False
+        for file in valid_context_files:
+            normalized_path = file["path"].strip().replace("\\", "/")
+            base_name = normalized_path.split("/")[-1] if "/" in normalized_path else normalized_path
+            if base_name.lower() == "soul.md":
+                has_soul_file = True
+                break
+
+        lines.extend(
+            [
+                "# Project Context",
+                "",
+                "The following project context files have been loaded:",
+            ]
+        )
+        if has_soul_file:
+            lines.append(
+                "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it."
+            )
+        lines.append("")
+        for file in valid_context_files:
+            lines.extend([f"## {file['path']}", "", file["content"], ""])
+
+
+    lines.extend(
+        [
+            "## Silent Replies",
+            f"When you have nothing to say, respond with ONLY: {SILENT_REPLY_TOKEN}",
+            "",
+            "⚠️ Rules:",
+            "- It must be your ENTIRE message — nothing else",
+            f'- Never append it to an actual response (never include "{SILENT_REPLY_TOKEN}" in real replies)',
+            "- Never wrap it in markdown or code blocks",
+            "",
+            f'❌ Wrong: "Here\'s help... {SILENT_REPLY_TOKEN}"',
+            f'❌ Wrong: "{SILENT_REPLY_TOKEN}"',
+            f"✅ Right: {SILENT_REPLY_TOKEN}",
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
+            "## Heartbeats",
+            heartbeat_prompt_line,
+            "If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
+            "HEARTBEAT_OK",
+            'OpenXBot treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
+            'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
+            "## Runtime",
+            buildRuntimeLine(
+                runtime_info,
+                runtime_channel,
+                runtime_capabilities,
+                params.get("defaultThinkLevel"),
+            ),
+            f"Reasoning: {reasoning_level} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.",
+        ]
+    )
+
+    return "\n".join([line for line in lines if line])
+
+
+def buildRuntimeLine(
+    runtime_info: dict[str, Any] | None = None,
+    runtime_channel: str | None = None,
+    runtime_capabilities: list[str] | None = None,
+    default_think_level: str | None = None,
+) -> str:
+    runtime_info = runtime_info or {}
+    runtime_capabilities = runtime_capabilities or []
+    parts = [
+        f"agent={runtime_info['agentId']}" if runtime_info.get("agentId") else "",
+        f"host={runtime_info['host']}" if runtime_info.get("host") else "",
+        f"repo={runtime_info['repoRoot']}" if runtime_info.get("repoRoot") else "",
+        (
+            f"os={runtime_info['os']}"
+            + (f" ({runtime_info['arch']})" if runtime_info.get("arch") else "")
+        )
+        if runtime_info.get("os")
+        else (f"arch={runtime_info['arch']}" if runtime_info.get("arch") else ""),
+        f"node={runtime_info['node']}" if runtime_info.get("node") else "",
+        f"model={runtime_info['model']}" if runtime_info.get("model") else "",
+        f"default_model={runtime_info['defaultModel']}"
+        if runtime_info.get("defaultModel")
+        else "",
+        f"shell={runtime_info['shell']}" if runtime_info.get("shell") else "",
+        f"channel={runtime_channel}" if runtime_channel else "",
+        (
+            "capabilities="
+            + (",".join(runtime_capabilities) if runtime_capabilities else "none")
+        )
+        if runtime_channel
+        else "",
+        f"thinking={default_think_level or 'off'}",
+    ]
+    return f"Runtime: {' | '.join([p for p in parts if p])}"
